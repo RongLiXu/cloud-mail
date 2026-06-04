@@ -27,13 +27,14 @@ const emailService = {
 
 	async list(c, params, userId) {
 
-		let { emailId, type, accountId, size, timeSort, allReceive } = params;
+		let { emailId, type, accountId, size, timeSort, allReceive, num } = params;
 
 		size = Number(size);
 		emailId = Number(emailId);
 		timeSort = Number(timeSort);
 		accountId = Number(accountId);
 		allReceive = Number(allReceive);
+		num = Number(num);
 
 		if (size > 50) {
 			size = 50;
@@ -53,6 +54,23 @@ const emailService = {
 			let accountRow = await accountService.selectById(c, accountId);
 			allReceive = accountRow.allReceive;
 		}
+
+		const countConditions = [
+			allReceive ? eq(1,1) : eq(email.accountId, accountId),
+			eq(email.userId, userId),
+			eq(email.type, type),
+			eq(email.isDel, isDel.NORMAL),
+			eq(account.isDel, isDel.NORMAL)
+		];
+
+		const latestEmailQuery = orm(c).select().from(email).where(
+			and(
+				allReceive ? eq(1,1) : eq(email.accountId, accountId),
+				eq(email.userId, userId),
+				eq(email.type, type),
+				eq(email.isDel, isDel.NORMAL)
+			))
+			.orderBy(desc(email.emailId)).limit(1).get();
 
 		const query = orm(c)
 			.select({
@@ -87,6 +105,59 @@ const emailService = {
 			query.orderBy(desc(email.emailId));
 		}
 
+		if (num > 0) {
+			const pageQuery = orm(c)
+				.select({
+					...email,
+					starId: star.starId
+				})
+				.from(email)
+				.leftJoin(
+					star,
+					and(
+						eq(star.emailId, email.emailId),
+						eq(star.userId, userId)
+					)
+				).leftJoin(
+					account,
+					eq(account.accountId, email.accountId)
+				)
+				.where(and(...countConditions));
+
+			if (timeSort) {
+				pageQuery.orderBy(asc(email.emailId));
+			} else {
+				pageQuery.orderBy(desc(email.emailId));
+			}
+
+			const offset = (num - 1) * size;
+			let [list, totalRow, latestEmail] = await Promise.all([
+				pageQuery.limit(size).offset(offset).all(),
+				orm(c).select({ total: count() }).from(email)
+					.leftJoin(account, eq(account.accountId, email.accountId))
+					.where(and(...countConditions))
+					.get(),
+				latestEmailQuery
+			]);
+
+			list = list.map(item => ({
+				...item,
+				isStar: item.starId != null ? 1 : 0
+			}));
+
+			await this.emailAddAtt(c, list);
+
+			if (!latestEmail) {
+				latestEmail = {
+					emailId: 0,
+					accountId: accountId,
+					userId: userId,
+				}
+			}
+
+			return { list, total: totalRow.total, latestEmail };
+		}
+
 		const listQuery = query.limit(size).all();
 
 		const totalQuery = orm(c).select({ total: count() }).from(email)
@@ -94,24 +165,7 @@ const emailService = {
 				account,
 				eq(account.accountId, email.accountId)
 			)
-			.where(
-				and(
-					allReceive ? eq(1,1) : eq(email.accountId, accountId),
-					eq(email.userId, userId),
-					eq(email.type, type),
-					eq(email.isDel, isDel.NORMAL),
-					eq(account.isDel, isDel.NORMAL)
-				)
-		).get();
-
-		const latestEmailQuery = orm(c).select().from(email).where(
-			and(
-				allReceive ? eq(1,1) : eq(email.accountId, accountId),
-				eq(email.userId, userId),
-				eq(email.type, type),
-				eq(email.isDel, isDel.NORMAL)
-			))
-			.orderBy(desc(email.emailId)).limit(1).get();
+			.where(and(...countConditions)).get();
 
 		let [list, totalRow, latestEmail] = await Promise.all([listQuery, totalQuery, latestEmailQuery]);
 
@@ -119,7 +173,6 @@ const emailService = {
 			...item,
 			isStar: item.starId != null ? 1 : 0
 		}));
-
 
 		await this.emailAddAtt(c, list);
 
@@ -293,12 +346,11 @@ const emailService = {
 
 		const { data, error } = sendResult;
 
-
 		if (error) {
 			throw new BizError(error.message);
 		}
 
-		imageDataList = imageDataList.map(item => ({...item, contentId: `<${item.contentId}>`}))
+		imageDataList = imageDataList.map(item => ({...item, contentId: `<${item.contentId}>`}));
 
 		//把图片标签cid标签切换会通用url
 		html = this.imgReplace(html, imageDataList, r2Domain);
@@ -552,7 +604,7 @@ const emailService = {
 		const userIds = accountList.map(accountRow => accountRow.userId);
 		let roleList = await roleService.selectByUserIds(c, userIds);
 
-		//封装数据库准备保存到数据库
+		//封装数据库准备保存
 		const emailDataList = [];
 
 		for (const email of receiveEmail) {

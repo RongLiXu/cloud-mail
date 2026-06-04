@@ -9,6 +9,9 @@
                :time-sort="params.timeSort"
                :email-read="emailRead"
                :show-unread="true"
+               :pagination="true"
+               :default-page-size="15"
+               :page-sizes="[10, 15, 20, 25, 30, 50]"
                actionLeft="4px"
                @jump="jumpContent"
   >
@@ -138,10 +141,16 @@ function cancelStar(email) {
   emailStore.starScroll?.deleteEmail([email.emailId])
 }
 
-function getEmailList(emailId, size) {
-  const accountId =  accountStore.currentAccountId;
+function getEmailList(pageParams) {
+  const accountId = accountStore.currentAccountId;
   const allReceive = accountStore.currentAccount.allReceive;
-  return emailList(accountId, allReceive, emailId, params.timeSort, size, 0).then(data => {
+  return emailList({
+    ...pageParams,
+    accountId,
+    allReceive,
+    timeSort: params.timeSort,
+    type: 0
+  }).then(data => {
     data.latestEmail.reqAccountId = accountId;
     data.latestEmail.allReceive = allReceive;
     return data;

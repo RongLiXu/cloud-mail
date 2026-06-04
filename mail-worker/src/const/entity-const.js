@@ -11,6 +11,10 @@ export const accountConst = {
 	allReceive: {
 		CLOSE: 0,
 		OPEN: 1
+	},
+	status: {
+		NORMAL: 0,
+		ARCHIVED: 1
 	}
 }
 

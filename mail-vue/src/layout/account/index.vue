@@ -15,39 +15,127 @@
         </template>
       </el-input>
     </div>
+    <div class="tag-wrap" v-if="tagOptions.length > 0">
+      <div class="tag-title">{{ $t('tagFilter') }}</div>
+      <div class="tag-list">
+        <el-tag
+            class="filter-tag"
+            :effect="selectedTag === '' ? 'dark' : 'plain'"
+            @click="changeTag('')"
+        >
+          {{ $t('all') }}
+        </el-tag>
+        <el-tag
+            v-for="tag in tagOptions"
+            :key="tag.name"
+            class="filter-tag"
+            :effect="selectedTag === tag.name ? 'dark' : 'plain'"
+            @click="changeTag(tag.name)"
+        >
+          {{ tag.name }}<span class="tag-count">({{ tag.count }})</span>
+        </el-tag>
+      </div>
+    </div>
     <el-scrollbar class="scrollbar" ref="scrollbarRef">
-      <div>
-        <el-card class="item" :class="itemBg(item.accountId)" v-for="item in accounts" :key="item.accountId"
-                 @click="changeAccount(item)">
-          <div class="account">
-            {{ item.email }}
-          </div>
-          <div class="opt">
-            <div class="send-email" @click.stop>
-              <Icon @click="setAllReceive(item)" v-if="!item.allReceive" icon="eva:email-fill" width="22" height="22" color="#fccb1a"/>
-              <Icon @click="setAllReceive(item)" v-else icon="flat-color-icons:folder" width="22" height="22" color="#23c4f1" />
-            </div>
-            <div class="settings" @click.stop>
-              <Icon icon="fluent-color:clipboard-24" width="22" height="22" @click.stop="copyAccount(item.email)"/>
-              <Icon icon="fluent:settings-24-filled" width="21" height="21" color="#909399"
-                    v-if="showNullSetting(item)"/>
-              <el-dropdown v-else>
-                <Icon icon="fluent:settings-24-filled" width="21" height="21" color="#909399"/>
-                <template #dropdown>
-                  <el-dropdown-menu>
-                    <el-dropdown-item v-if="hasPerm('email:send')" @click="openSetName(item)">{{ $t('rename') }}</el-dropdown-item>
-                    <el-dropdown-item v-if="item.accountId !== userStore.user.account.accountId" @click="setAsTop(item)">{{ $t('pin') }}</el-dropdown-item>
-                    <el-dropdown-item v-if="item.accountId !== userStore.user.account.accountId && hasPerm('account:delete')"
-                                      @click="remove(item)">{{ $t('delete') }}
-                    </el-dropdown-item>
-                  </el-dropdown-menu>
-                </template>
-              </el-dropdown>
-            </div>
-          </div>
-        </el-card>
+      <div v-infinite-scroll="getAccountList" :infinite-scroll-distance="600" :infinite-scroll-immediate="false">
+        <template v-if="!loading">
+          <template v-for="item in normalAccounts" :key="`normal-${item.accountId}`">
+            <el-card class="item" :class="itemBg(item.accountId)" @click="changeAccount(item)">
+              <div class="account-info">
+                <div class="account">
+                  {{ item.email }}
+                </div>
+                <div class="name" v-if="item.name && item.name !== item.email">
+                  {{ item.name }}
+                </div>
+                <div class="tags" v-if="item.tags?.length">
+                  <el-tag v-for="tag in item.tags" :key="`${item.accountId}-${tag}`" size="small" effect="plain">{{ tag }}</el-tag>
+                </div>
+              </div>
+              <div class="opt">
+                <div class="send-email" @click.stop>
+                  <Icon @click="setAllReceive(item)" v-if="!item.allReceive" icon="eva:email-fill" width="22" height="22" color="#fccb1a"/>
+                  <Icon @click="setAllReceive(item)" v-else icon="flat-color-icons:folder" width="22" height="22" color="#23c4f1"/>
+                </div>
+                <div class="settings" @click.stop>
+                  <Icon icon="fluent-color:clipboard-24" width="22" height="22" @click.stop="copyAccount(item.email)"/>
+                  <Icon icon="fluent:settings-24-filled" width="21" height="21" color="#909399"
+                        v-if="showNullSetting(item)"/>
+                  <el-dropdown v-else>
+                    <Icon icon="fluent:settings-24-filled" width="21" height="21" color="#909399"/>
+                    <template #dropdown>
+                      <el-dropdown-menu>
+                        <el-dropdown-item v-if="hasPerm('email:send')" @click="openSetName(item)">{{ $t('rename') }}</el-dropdown-item>
+                        <el-dropdown-item @click="openTags(item)">{{ $t('editTags') }}</el-dropdown-item>
+                        <el-dropdown-item v-if="item.accountId !== userStore.user.account.accountId" @click="setAsTop(item)">{{ $t('pin') }}</el-dropdown-item>
+                        <el-dropdown-item v-if="item.accountId !== userStore.user.account.accountId" @click="toggleArchive(item, true)">{{ $t('archive') }}</el-dropdown-item>
+                        <el-dropdown-item v-if="item.accountId !== userStore.user.account.accountId && hasPerm('account:delete')"
+                                          @click="remove(item)">{{ $t('delete') }}
+                        </el-dropdown-item>
+                      </el-dropdown-menu>
+                    </template>
+                  </el-dropdown>
+                </div>
+              </div>
+            </el-card>
+          </template>
 
-        <!-- Initial Loading Skeleton -->
+          <div class="archive-section" v-if="archivedAccounts.length > 0">
+            <div class="archive-head" @click="archivedExpanded = !archivedExpanded">
+              <div class="archive-title">
+                <Icon :icon="archivedExpanded ? 'mingcute:down-small-fill' : 'mingcute:right-small-fill'" width="18" height="18"/>
+                <span>{{ $t('archived') }}</span>
+                <span class="archive-count">({{ archivedAccounts.length }})</span>
+              </div>
+            </div>
+            <div v-show="archivedExpanded">
+              <template v-for="item in archivedAccounts" :key="`archived-${item.accountId}`">
+                <el-card class="item archived-item" :class="itemBg(item.accountId)" @click="changeAccount(item)">
+                  <div class="account-info">
+                    <div class="account">
+                      {{ item.email }}
+                    </div>
+                    <div class="name" v-if="item.name && item.name !== item.email">
+                      {{ item.name }}
+                    </div>
+                    <div class="tags" v-if="item.tags?.length">
+                      <el-tag v-for="tag in item.tags" :key="`${item.accountId}-${tag}`" size="small" effect="plain">{{ tag }}</el-tag>
+                    </div>
+                  </div>
+                  <div class="opt">
+                    <div class="send-email" @click.stop>
+                      <Icon @click="setAllReceive(item)" v-if="!item.allReceive" icon="eva:email-fill" width="22" height="22" color="#fccb1a"/>
+                      <Icon @click="setAllReceive(item)" v-else icon="flat-color-icons:folder" width="22" height="22" color="#23c4f1"/>
+                    </div>
+                    <div class="settings" @click.stop>
+                      <Icon icon="fluent-color:clipboard-24" width="22" height="22" @click.stop="copyAccount(item.email)"/>
+                      <Icon icon="fluent:settings-24-filled" width="21" height="21" color="#909399"
+                            v-if="showNullSetting(item)"/>
+                      <el-dropdown v-else>
+                        <Icon icon="fluent:settings-24-filled" width="21" height="21" color="#909399"/>
+                        <template #dropdown>
+                          <el-dropdown-menu>
+                            <el-dropdown-item v-if="hasPerm('email:send')" @click="openSetName(item)">{{ $t('rename') }}</el-dropdown-item>
+                            <el-dropdown-item @click="openTags(item)">{{ $t('editTags') }}</el-dropdown-item>
+                            <el-dropdown-item @click="toggleArchive(item, false)">{{ $t('unarchive') }}</el-dropdown-item>
+                            <el-dropdown-item v-if="item.accountId !== userStore.user.account.accountId && hasPerm('account:delete')"
+                                              @click="remove(item)">{{ $t('delete') }}
+                            </el-dropdown-item>
+                          </el-dropdown-menu>
+                        </template>
+                      </el-dropdown>
+                    </div>
+                  </div>
+                </el-card>
+              </template>
+            </div>
+          </div>
+
+          <div class="empty" v-if="noLoading && normalAccounts.length === 0 && archivedAccounts.length === 0">
+            <el-empty :description="$t('noMessagesFound')"/>
+          </div>
+        </template>
+
         <template v-if="loading">
           <el-skeleton v-for="i in skeletonRows" :key="i" animated>
             <template #template>
@@ -62,24 +150,25 @@
           </el-skeleton>
         </template>
 
-        <div class="empty" v-if="noLoading && accounts.length === 0">
-          <el-empty :description="$t('noMessagesFound')"/>
+        <template v-if="normalAccounts.length + archivedAccounts.length > 0 && !noLoading && !selectedTag">
+          <el-skeleton animated>
+            <template #template>
+              <el-card class="item">
+                <el-skeleton-item variant="p" style="width: 70%; height: 20px; margin-bottom: 20px"/>
+                <div style="display: flex; justify-content: space-between">
+                  <el-skeleton-item variant="text" style="width: 20px"/>
+                  <el-skeleton-item variant="text" style="width: 20px"/>
+                </div>
+              </el-card>
+            </template>
+          </el-skeleton>
+        </template>
+
+        <div class="noLoading" v-if="noLoading && normalAccounts.length + archivedAccounts.length > 0 && !selectedTag">
+          <div>{{ $t('noMoreData') }}</div>
         </div>
       </div>
-
     </el-scrollbar>
-    <div class="pagination" v-if="total > queryParams.size">
-      <el-pagination
-          :current-page="queryParams.num"
-          :page-size="queryParams.size"
-          :page-sizes="[10, 15, 20, 25, 30]"
-          background
-          layout="prev, pager, next, sizes, total"
-          :total="total"
-          @current-change="numChange"
-          @size-change="sizeChange"
-      />
-    </div>
     <el-dialog v-model="showAdd" :title="$t('addAccount')">
       <div class="container">
         <el-input v-model="addForm.email" ref="addRef" type="text" :placeholder="$t('emailAccount')" autocomplete="off">
@@ -105,9 +194,7 @@
             </div>
           </template>
         </el-input>
-        <el-button class="btn" type="primary" @click="submit" :loading="addLoading"
-        >{{ $t('add') }}
-        </el-button>
+        <el-button class="btn" type="primary" @click="submit" :loading="addLoading">{{ $t('add') }}</el-button>
       </div>
       <div
           class="add-email-turnstile"
@@ -123,9 +210,29 @@
       <div class="container">
         <el-input v-model="accountName" type="text" :placeholder="$t('username')" autocomplete="off">
         </el-input>
-        <el-button class="btn" type="primary" @click="setName" :loading="setNameLoading"
-        >{{ $t('save') }}
-        </el-button>
+        <el-button class="btn" type="primary" @click="setName" :loading="setNameLoading">{{ $t('save') }}</el-button>
+      </div>
+    </el-dialog>
+    <el-dialog v-model="tagDialogShow" :title="$t('editTags')">
+      <div class="container tag-dialog">
+        <el-select
+            v-model="editingTags"
+            multiple
+            filterable
+            allow-create
+            default-first-option
+            :reserve-keyword="false"
+            :placeholder="$t('tags')"
+            class="tag-select"
+        >
+          <el-option
+              v-for="tag in tagOptions"
+              :key="tag.name"
+              :label="tag.name"
+              :value="tag.name"
+          />
+        </el-select>
+        <el-button class="btn" type="primary" @click="saveTags" :loading="tagSaving">{{ $t('save') }}</el-button>
       </div>
     </el-dialog>
   </div>
@@ -139,7 +246,9 @@ import {
   accountDelete,
   accountSetName,
   accountSetAllReceive,
-  accountSetAsTop
+  accountSetAsTop,
+  accountArchive,
+  accountSetTags
 } from "@/request/account.js";
 import {sleep} from "@/utils/time-utils.js"
 import {isEmail} from "@/utils/verify-utils.js";
@@ -159,32 +268,40 @@ const emailStore = useEmailStore();
 const showAdd = ref(false)
 const addLoading = ref(false);
 const domainList = computed(() => settingStore.domainList)
-const accounts = reactive([])
+const normalAccounts = reactive([])
+const archivedAccounts = reactive([])
+const tagOptions = reactive([])
+const selectedTag = ref('')
+const archivedExpanded = ref(false)
 const searchKeyword = ref('')
 let searchTimer = null
 const noLoading = ref(false)
 const loading = ref(false)
-const total = ref(0)
+const followLoading = ref(false)
 const verifyShow = ref(false)
 const setNameShow = ref(false)
 const setNameLoading = ref(false)
 const accountName = ref(null)
 const addRef = ref({})
 const scrollbarRef = ref({})
+const tagDialogShow = ref(false)
+const tagSaving = ref(false)
+const editingTags = ref([])
+let editingAccount = null
 let account = null
 let turnstileId = null
 const botJsError = ref(false)
 let verifyToken = ''
 let verifyErrorCount = 0
-let first = true
 const addForm = reactive({
   email: '',
   suffix: settingStore.domainList[0]
 })
 let skeletonRows = 10
 const queryParams = reactive({
-  num: 1,
-  size: 15
+  size: 30,
+  accountId: 0,
+  lastSort: null
 })
 
 const mySelect = ref()
@@ -194,7 +311,7 @@ if (hasPerm('account:query')) {
 }
 
 watch(() => accountStore.changeUserAccountName, (name) => {
-  const currentAccount = accounts.find(item => item.accountId === accountStore.currentAccountId)
+  const currentAccount = findAccountById(accountStore.currentAccountId)
   if (currentAccount) {
     currentAccount.name = name
   }
@@ -222,7 +339,6 @@ watch(() => settingStore.domainList, (list) => {
   }
 }, {immediate: true})
 
-
 const openSelect = () => {
   mySelect.value.toggleMenu()
 }
@@ -248,15 +364,35 @@ window.onTurnstileSuccess = (token) => {
   verifyToken = token;
 };
 
+function getAllAccounts() {
+  return [...normalAccounts, ...archivedAccounts]
+}
+
+function findAccountById(accountId) {
+  return getAllAccounts().find(item => item.accountId === accountId)
+}
+
+function replaceList(target, list) {
+  target.splice(0, target.length, ...list)
+}
+
 function getSkeletonRows() {
-  if (accounts.length > 20) return skeletonRows = 20
-  if (accounts.length === 0) return skeletonRows = 1
-  skeletonRows = accounts.length
+  const length = normalAccounts.length + archivedAccounts.length
+  if (length > 20) return skeletonRows = 20
+  if (length === 0) return skeletonRows = 1
+  skeletonRows = length
+}
+
+function changeTag(tag) {
+  if (selectedTag.value === tag) {
+    return
+  }
+  selectedTag.value = tag
+  refresh()
 }
 
 function setName() {
-
-  let name = accountName.value
+  const name = accountName.value
 
   if (name === account.name) {
     setNameShow.value = false
@@ -297,8 +433,34 @@ function openSetName(accountItem) {
   setNameShow.value = true
 }
 
+function openTags(accountItem) {
+  editingAccount = accountItem
+  editingTags.value = [...(accountItem.tags || [])]
+  tagDialogShow.value = true
+}
+
+function saveTags() {
+  if (!editingAccount) {
+    return
+  }
+  tagSaving.value = true
+  accountSetTags(editingAccount.accountId, editingTags.value).then(() => {
+    editingAccount.tags = [...editingTags.value]
+    tagDialogShow.value = false
+    ElMessage({
+      message: t('saveSuccessMsg'),
+      type: 'success',
+      plain: true,
+    })
+    return getAccountList()
+  }).finally(() => {
+    tagSaving.value = false
+  })
+}
+
 function setAllReceive(account) {
-  let allReceiveAccount = accounts.find(account => account.allReceive === AccountAllReceiveEnum.ENABLED);
+  const allAccounts = getAllAccounts()
+  const allReceiveAccount = allAccounts.find(item => item.allReceive === AccountAllReceiveEnum.ENABLED);
   if (allReceiveAccount && allReceiveAccount.accountId !== account.accountId) allReceiveAccount.allReceive = AccountAllReceiveEnum.DISABLED;
   account.allReceive = account.allReceive === AccountAllReceiveEnum.DISABLED ? AccountAllReceiveEnum.ENABLED : AccountAllReceiveEnum.DISABLED;
   accountSetAllReceive(account.accountId).catch(() => {
@@ -318,16 +480,24 @@ function setAllReceive(account) {
   })
 }
 
+function toggleArchive(accountItem, archived) {
+  accountArchive(accountItem.accountId, archived).then(() => {
+    ElMessage({
+      message: t('setSuccess'),
+      type: 'success',
+      plain: true,
+    })
+    refresh()
+  })
+}
 
-function showNullSetting(item) {
-  return !hasPerm('email:send') && !(item.accountId !== userStore.user.account.accountId && hasPerm('account:delete'))
+function showNullSetting() {
+  return false
 }
 
 function itemBg(accountId) {
   return accountStore.currentAccountId === accountId ? 'item-choose' : ''
 }
-
-
 
 function remove(account) {
   ElMessageBox.confirm(t('delConfirm', {msg: account.email}), {
@@ -336,10 +506,17 @@ function remove(account) {
     type: 'warning'
   }).then(() => {
     accountDelete(account.accountId).then(() => {
-      if (accounts.length === 1 && queryParams.num > 1) {
-        queryParams.num--
+      const normalIndex = normalAccounts.findIndex(item => item.accountId === account.accountId)
+      if (normalIndex > -1) {
+        normalAccounts.splice(normalIndex, 1)
       }
-      getAccountList()
+      const archivedIndex = archivedAccounts.findIndex(item => item.accountId === account.accountId)
+      if (archivedIndex > -1) {
+        archivedAccounts.splice(archivedIndex, 1)
+      }
+      if (normalAccounts.length + archivedAccounts.length < queryParams.size && !noLoading.value) {
+        getAccountList()
+      }
       ElMessage({
         message: t('delSuccessMsg'),
         type: 'success',
@@ -353,11 +530,14 @@ function refresh() {
   if (loading.value) {
     return
   }
-  queryParams.num = 1
   noLoading.value = false
+  followLoading.value = false
+  queryParams.accountId = 0
+  queryParams.lastSort = null
   getSkeletonRows();
-  scrollbarRef.value.setScrollTop(0)
-  accounts.splice(0, accounts.length)
+  scrollbarRef.value?.setScrollTop?.(0)
+  replaceList(normalAccounts, [])
+  replaceList(archivedAccounts, [])
   getAccountList()
 }
 
@@ -403,56 +583,84 @@ async function copyAccount(account) {
   }
 }
 
+function selectFallbackAccount() {
+  const currentAccount = findAccountById(accountStore.currentAccountId)
+  if (currentAccount) {
+    accountStore.currentAccount = currentAccount
+    return
+  }
+  if (normalAccounts.length > 0) {
+    changeAccount(normalAccounts[0])
+    return
+  }
+  if (archivedAccounts.length > 0) {
+    changeAccount(archivedAccounts[0])
+  }
+}
+
 function getAccountList() {
+  if (loading.value || followLoading.value || noLoading.value) return Promise.resolve();
 
-  if (loading.value) return;
+  const hasTagFilter = !!selectedTag.value
 
-  loading.value = true
+  if (normalAccounts.length + archivedAccounts.length === 0) {
+    loading.value = true
+  } else {
+    followLoading.value = true
+  }
   const start = Date.now();
 
-  accountList({
-    num: queryParams.num,
+  const accountId = hasTagFilter ? 0 : (normalAccounts.length > 0 ? normalAccounts.at(-1).accountId : queryParams.accountId || 0)
+  const lastSort = hasTagFilter ? null : (normalAccounts.length > 0 ? normalAccounts.at(-1).sort : queryParams.lastSort)
+  const requestParams = {
+    accountId,
     size: queryParams.size,
-    keyword: searchKeyword.value
-  }).then(async ({list, total: listTotal}) => {
+    lastSort,
+    keyword: searchKeyword.value,
+    tag: selectedTag.value
+  }
 
+  if (hasTagFilter) {
+    requestParams.num = 1
+  }
+
+  return accountList(requestParams).then(async (data) => {
     const end = Date.now();
     const duration = end - start;
     if (duration < 300) {
       await sleep(300 - duration)
     }
 
-    accounts.splice(0, accounts.length, ...list)
-    total.value = listTotal
-    noLoading.value = list.length === 0
+    const isPagedTagResponse = !Array.isArray(data)
+    const normalList = isPagedTagResponse ? (data.normal?.list || []) : data.filter(item => item.status !== 1)
+    const archivedList = isPagedTagResponse ? (data.archived?.list || []) : data.filter(item => item.status === 1)
 
-    const currentAccount = accounts.find(item => item.accountId === accountStore.currentAccountId)
-    if (currentAccount) {
-      accountStore.currentAccount = currentAccount
-    } else if (accounts.length > 0) {
-      changeAccount(accounts[0])
+    if (isPagedTagResponse || hasTagFilter) {
+      replaceList(normalAccounts, normalList)
+    } else {
+      normalAccounts.push(...normalList)
+    }
+    replaceList(archivedAccounts, archivedList)
+    if (isPagedTagResponse && Array.isArray(data.tagList)) {
+      replaceList(tagOptions, data.tagList)
     }
 
-    first = false
+    if ((isPagedTagResponse ? normalList.length : normalList.length + archivedList.length) < queryParams.size) {
+      noLoading.value = true
+    }
+
+    if (archivedAccounts.length > 0) {
+      archivedExpanded.value = true
+    }
+
+    selectFallbackAccount()
   }).finally(() => {
     loading.value = false
+    followLoading.value = false
   })
 }
 
-function numChange(num) {
-  queryParams.num = num
-  getAccountList()
-}
-
-function sizeChange(size) {
-  queryParams.size = size
-  queryParams.num = 1
-  getAccountList()
-}
-
-
 function submit() {
-
   if (!addForm.email) {
     ElMessage({
       message: t('emptyEmailMsg'),
@@ -506,11 +714,10 @@ function submit() {
   }
 
   addLoading.value = true
-  accountAdd(addForm.email + addForm.suffix, verifyToken).then(account => {
+  accountAdd(addForm.email + addForm.suffix, verifyToken).then((account) => {
     addLoading.value = false
     showAdd.value = false
     addForm.email = ''
-    accounts.push(account)
     verifyToken = ''
     settingStore.settings.addVerifyOpen = account.addVerifyOpen
     ElMessage({
@@ -520,6 +727,7 @@ function submit() {
     })
     verifyShow.value = false
     userStore.refreshUserInfo()
+    refresh()
   }).catch(res => {
     if (res.code === 400) {
       verifyToken = ''
@@ -543,7 +751,6 @@ path[fill="#ffdda1"] {
 </style>
 <style scoped lang="scss">
 .account-box {
-
   border-right: 1px solid var(--el-border-color) !important;
   background-color: var(--el-bg-color);
   height: 100%;
@@ -568,18 +775,44 @@ path[fill="#ffdda1"] {
     .add {
       margin-left: 2px;
     }
+  }
 
-    .head-opt:not(.add) .refresh {
-      margin-left: 5px;
+  .search-wrap {
+    padding: 10px;
+    box-shadow: var(--header-actions-border);
+  }
+
+  .tag-wrap {
+    padding: 0 10px 10px;
+    box-shadow: var(--header-actions-border);
+
+    .tag-title {
+      font-size: 12px;
+      color: var(--secondary-text-color);
+      margin-bottom: 8px;
+    }
+
+    .tag-list {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .filter-tag {
+      cursor: pointer;
+    }
+
+    .tag-count {
+      margin-left: 4px;
     }
   }
 
   .scrollbar {
     width: 100%;
-    height: calc(100% - 150px);
+    height: calc(100% - 130px);
     overflow: auto;
     @media (max-width: 767px) {
-      height: calc(100% - 210px);
+      height: calc(100% - 190px);
     }
 
     .empty {
@@ -598,21 +831,6 @@ path[fill="#ffdda1"] {
     }
   }
 
-  .search-wrap {
-    padding: 10px;
-    box-shadow: var(--header-actions-border);
-  }
-
-  .pagination {
-    padding: 10px;
-    display: flex;
-    justify-content: flex-end;
-
-    :deep(.el-pagination .el-select) {
-      width: 100px;
-    }
-  }
-
   .btn {
     width: 100%;
     margin-top: 15px;
@@ -627,12 +845,31 @@ path[fill="#ffdda1"] {
     margin-right: 10px;
     cursor: pointer;
 
+    .account-info {
+      margin-bottom: 18px;
+    }
+
     .account {
       font-weight: 600;
-      margin-bottom: 20px;
       overflow: hidden;
       white-space: nowrap;
       text-overflow: ellipsis;
+    }
+
+    .name {
+      font-size: 12px;
+      margin-top: 6px;
+      color: var(--secondary-text-color);
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+    }
+
+    .tags {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      margin-top: 8px;
     }
 
     .opt {
@@ -658,6 +895,34 @@ path[fill="#ffdda1"] {
     }
   }
 
+  .archive-section {
+    padding-top: 4px;
+
+    .archive-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 14px 10px;
+      cursor: pointer;
+      color: var(--secondary-text-color);
+    }
+
+    .archive-title {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 13px;
+    }
+
+    .archive-count {
+      font-size: 12px;
+    }
+  }
+
+  .archived-item {
+    opacity: 0.9;
+  }
+
   .item:first-child {
     margin-top: 10px;
   }
@@ -666,7 +931,6 @@ path[fill="#ffdda1"] {
     background: var(--choose-account-background);
   }
 }
-
 
 .setting-icon {
   position: relative;
@@ -696,10 +960,6 @@ path[fill="#ffdda1"] {
   pointer-events: none;
 }
 
-:deep(.el-pagination .el-select) {
-  width: 100px;
-  background: var(--el-bg-color);
-}
 
 .add-email-turnstile {
   margin-top: 15px;
@@ -715,4 +975,9 @@ path[fill="#ffdda1"] {
   position: fixed;
 }
 
+.tag-dialog {
+  .tag-select {
+    width: 100%;
+  }
+}
 </style>

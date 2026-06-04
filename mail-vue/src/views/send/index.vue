@@ -10,6 +10,9 @@
                :star-cancel="starCancel"
                @jump="jumpContent"
                :time-sort="params.timeSort"
+               :pagination="true"
+               :default-page-size="15"
+               :page-sizes="[10, 15, 20, 25, 30, 50]"
                :type="'send'"
   >
     <template #first>
@@ -71,10 +74,16 @@ function cancelStar(email) {
   emailStore.starScroll?.deleteEmail([email.emailId])
 }
 
-function getEmailList(emailId, size) {
-  const accountId =  accountStore.currentAccountId;
+function getEmailList(pageParams) {
+  const accountId = accountStore.currentAccountId;
   const allReceive = accountStore.currentAccount.allReceive;
-  return emailList(accountId, allReceive, emailId, params.timeSort, size, 1).then(data => {
+  return emailList({
+    ...pageParams,
+    accountId,
+    allReceive,
+    timeSort: params.timeSort,
+    type: 1
+  }).then(data => {
     data.latestEmail.reqAccountId = accountId;
     data.latestEmail.allReceive = allReceive;
     return data;

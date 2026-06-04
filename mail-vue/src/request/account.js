@@ -23,3 +23,11 @@ export function accountSetAllReceive(accountId) {
 export function accountSetAsTop(accountId) {
     return http.put('/account/setAsTop', {accountId})
 }
+
+export function accountArchive(accountId, archived) {
+    return http.put('/account/archive', {accountId, archived})
+}
+
+export function accountSetTags(accountId, tags) {
+    return http.put('/account/setTags', {accountId, tags})
+}
