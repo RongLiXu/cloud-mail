@@ -5,6 +5,9 @@
                :emailDelete="emailDelete"
                :star-add="starAdd"
                :star-cancel="starCancel"
+               :pagination="true"
+               :default-page-size="15"
+               :page-sizes="[10, 15, 20, 25, 30, 50]"
                @jump="jumpContent"
                actionLeft="6px"
                :show-account-icon="false"
@@ -63,16 +66,20 @@ watch(() => draftStore.setDraft, async () => {
 })
 
 watch(() => draftStore.refreshList, async () => {
-  const {list} = await getEmailList();
-    scroll.value.emailList.length = 0
-    scroll.value.handleList(list);
-    scroll.value.emailList.push(...list)
+  scroll.value.refreshList();
 })
 
-function getEmailList() {
-  return new Promise((resolve, reject) => {
+function getEmailList(pageParams) {
+  return new Promise((resolve) => {
     db.value.draft.orderBy('createTime').reverse().toArray().then(list => {
-      resolve({list})
+      const num = pageParams?.num || 1
+      const size = pageParams?.size || 15
+      const start = (num - 1) * size
+      resolve({
+        list: list.slice(start, start + size),
+        total: list.length,
+        latestEmail: list[0] || null
+      })
     })
   })
 }

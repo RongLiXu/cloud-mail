@@ -1,5 +1,5 @@
 <template>
-  <div class="email-container">
+  <div :class="['email-container', {'email-container-pagination': pagination}]">
     <div class="header-actions">
       <el-checkbox
           v-model="checkAll"
@@ -140,6 +140,33 @@
       <div class="empty" v-if="noLoading && emailList.length === 0 && !loading">
         <el-empty :image-size="isMobile ? 120 : null" :description="$t('noMessagesFound')"/>
       </div>
+    </div>
+    <div class="pagination" v-if="pagination && total > queryParam.size">
+      <el-pagination
+          :size="pageSize"
+          :current-page="pageParam.num"
+          :page-size="queryParam.size"
+          :pager-count="pagerCount"
+          :page-sizes="pageSizes"
+          background
+          :layout="layout"
+          :total="total"
+          @size-change="sizeChange"
+          @current-change="numChange"
+      />
+      <el-pagination
+          v-if="phonePageShow"
+          :size="pageSize"
+          :current-page="pageParam.num"
+          :page-size="queryParam.size"
+          :pager-count="pagerCount"
+          :page-sizes="pageSizes"
+          background
+          layout="sizes, total"
+          :total="total"
+          @size-change="sizeChange"
+          @current-change="numChange"
+      />
     </div>
     <el-dropdown
         ref="dropdownRef"
@@ -294,6 +321,18 @@ const props = defineProps({
   showUnread: {
     type: Boolean,
     default: false
+  },
+  pagination: {
+    type: Boolean,
+    default: false
+  },
+  pageSizes: {
+    type: Array,
+    default: () => [10, 15, 20, 25, 30, 50]
+  },
+  defaultPageSize: {
+    type: Number,
+    default: 50
   }
 })
 
@@ -325,6 +364,10 @@ const dropdownCloseLock = ref(false);
 const dropdownShow = ref(false);
 const rightClickEmail = ref({});
 const checkedEmailCount = ref(0);
+const pagerCount = ref(10)
+const layout = ref('prev, pager, next, sizes, total')
+const pageSize = ref('')
+const phonePageShow = ref(false)
 let timer = null
 const position = ref(
     DOMRect.fromRect({
@@ -340,7 +383,10 @@ const triggerRef = ref({
 })
 
 const queryParam = reactive({
-  size: 50
+  size: props.defaultPageSize
+});
+const pageParam = reactive({
+  num: 1
 });
 
 defineExpose({
@@ -352,7 +398,9 @@ defineExpose({
   firstLoad,
   latestEmail,
   noLoading,
-  total
+  total,
+  pageParam,
+  queryParam
 })
 
 onActivated(() => {
@@ -378,6 +426,7 @@ getEmailList()
 
 window.onresize = () => {
   isMobile.value = innerWidth < 1367
+  adjustPagination()
 }
 
 function onScroll(e) {
@@ -387,6 +436,16 @@ function onScroll(e) {
 const { arrivedState } = useScroll(scrollbarRef, {
   offset: { bottom: 1200 }
 })
+
+adjustPagination()
+
+function adjustPagination() {
+  const width = window.innerWidth
+  pagerCount.value = width < 768 ? 7 : 11
+  layout.value = width < 768 ? 'pager' : 'prev, pager, next, sizes, total'
+  phonePageShow.value = width < 768
+  pageSize.value = width < 380 ? 'small' : ''
+}
 
 
 const list = computed(() => {
@@ -441,6 +500,9 @@ watch(noLoading, (isNoLoading) => {
 
 // 监听是否到达底部
 watch(() => arrivedState.bottom, (isBottom) => {
+  if (props.pagination) {
+    return
+  }
   if (isBottom && !loading.value) {
     loadData();
   }
@@ -718,6 +780,14 @@ function deleteEmail(emailIds) {
       }
     })
   })
+  total.value = Math.max(total.value - emailIds.length, 0)
+  if (props.pagination) {
+    if (emailList.length === 0 && pageParam.num > 1) {
+      pageParam.num--
+    }
+    refreshList(false)
+    return
+  }
   if (emailList.length < queryParam.size && !noLoading.value) {
     getEmailList()
   }
@@ -729,6 +799,11 @@ function addItem(email) {
 
   if (existIndex > -1) {
     return false;
+  }
+
+  if (props.pagination) {
+    total.value++
+    return false
   }
 
   email.formatText = htmlToText(email);
@@ -814,6 +889,44 @@ function getEmailList(refresh = false) {
   let emailId = emailList.length > 0 ? emailList.at(-1).emailId : 0;
 
   reqLock = true
+
+  if (props.pagination) {
+    getSkeletonRows()
+    loading.value = true
+    followLoading.value = false
+    noLoading.value = false
+    scrollTop = 0
+    const start = Date.now()
+
+    props.getEmailList({
+      num: pageParam.num,
+      size: queryParam.size
+    }).then(async data => {
+      const end = Date.now()
+      const duration = end - start
+      if (duration < 300 && pageParam.num === 1) {
+        await sleep(300 - duration)
+      }
+      firstLoad.value = false
+
+      const list = data.list.map(item => ({
+        ...item,
+        checked: false
+      }));
+
+      emailList.length = 0
+      latestEmail.value = data.latestEmail
+      handleList(list)
+      emailList.push(...list)
+      scrollbarRef.value?.setScrollTop(0)
+      noLoading.value = data.list.length === 0
+      total.value = data.total
+    }).finally(() => {
+      loading.value = false
+      reqLock = false
+    })
+    return
+  }
 
   if (!refresh) {
 
@@ -901,13 +1014,30 @@ function refresh() {
   refreshList()
 }
 
-function refreshList() {
+function refreshList(resetPage = true) {
   checkAll.value = false;
   isIndeterminate.value = false;
+  if (props.pagination && resetPage) {
+    pageParam.num = 1
+  }
   getEmailList(true);
 }
 
+function sizeChange(size) {
+  queryParam.size = size
+  pageParam.num = 1
+  refreshList(false)
+}
+
+function numChange(num) {
+  pageParam.num = num
+  refreshList(false)
+}
+
 function loadData() {
+  if (props.pagination) {
+    return
+  }
   getEmailList()
 }
 
@@ -922,6 +1052,10 @@ function loadData() {
   color: var(--el-text-color-primary);
   overflow: hidden;
   height: 100%;
+}
+
+.email-container-pagination {
+  grid-template-rows: auto 1fr auto;
 }
 
 .scroll {

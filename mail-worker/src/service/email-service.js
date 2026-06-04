@@ -771,10 +771,10 @@ const emailService = {
 
 	async allList(c, params) {
 
-		let { emailId, size, name, subject, accountEmail, userEmail, type, timeSort } = params;
+		let { emailId, size, name, subject, accountEmail, userEmail, type, timeSort, num } = params;
 
 		size = Number(size);
-
+		num = Number(num);
 		emailId = Number(emailId);
 		timeSort = Number(timeSort);
 
@@ -834,6 +834,48 @@ const emailService = {
 		conditions.push(ne(email.status, emailConst.status.SAVING));
 
 		const countConditions = [...conditions];
+		const latestEmailQuery = orm(c).select().from(email)
+			.where(and(
+				eq(email.type, emailConst.type.RECEIVE),
+				ne(email.status, emailConst.status.SAVING)
+			))
+			.orderBy(desc(email.emailId)).limit(1).get();
+
+		if (num > 0) {
+			const query = orm(c).select({ ...email, userEmail: user.email })
+				.from(email)
+				.leftJoin(user, eq(email.userId, user.userId))
+				.where(and(...countConditions));
+
+			if (timeSort) {
+				query.orderBy(asc(email.emailId));
+			} else {
+				query.orderBy(desc(email.emailId));
+			}
+
+			const offset = (num - 1) * size;
+			let [list, totalRow, latestEmail] = await Promise.all([
+				query.limit(size).offset(offset).all(),
+				orm(c).select({ total: count() })
+					.from(email)
+					.leftJoin(user, eq(email.userId, user.userId))
+					.where(and(...countConditions))
+					.get(),
+				latestEmailQuery
+			]);
+
+			await this.emailAddAtt(c, list);
+
+			if (!latestEmail) {
+				latestEmail = {
+					emailId: 0,
+					accountId: 0,
+					userId: 0,
+				}
+			}
+
+			return { list, total: totalRow.total, latestEmail };
+		}
 
 		if (timeSort) {
 			conditions.unshift(gt(email.emailId, emailId));
@@ -859,12 +901,6 @@ const emailService = {
 
 		const listQuery = await query.limit(size).all();
 		const totalQuery = await queryCount.get();
-		const latestEmailQuery = await orm(c).select().from(email)
-			.where(and(
-				eq(email.type, emailConst.type.RECEIVE),
-				ne(email.status, emailConst.status.SAVING)
-			))
-			.orderBy(desc(email.emailId)).limit(1).get();
 
 		let [list, totalRow, latestEmail] = await Promise.all([listQuery, totalQuery, latestEmailQuery]);
 

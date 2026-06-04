@@ -103,17 +103,46 @@ const accountService = {
 		return orm(c).select().from(account).where(sql`${account.email} COLLATE NOCASE = ${email}`).get();
 	},
 
-	list(c, params, userId) {
+	async list(c, params, userId) {
 
-		let { accountId, size, lastSort, keyword } = params;
+		let { accountId, size, lastSort, keyword, num } = params;
 
 		accountId = Number(accountId);
 		size = Number(size);
 		lastSort = Number(lastSort);
+		num = Number(num);
 		keyword = keyword?.trim();
 
 		if (size > 30) {
 			size = 30;
+		}
+
+		if (num > 0) {
+			const conditions = [
+				eq(account.userId, userId),
+				eq(account.isDel, isDel.NORMAL),
+			];
+
+			if (keyword) {
+				conditions.push(
+					or(
+						sql`${account.email} COLLATE NOCASE LIKE ${`%${keyword}%`}`,
+						sql`${account.name} COLLATE NOCASE LIKE ${`%${keyword}%`}`
+					)
+				);
+			}
+
+			const offset = (num - 1) * size;
+			const [list, totalRow] = await Promise.all([
+				orm(c).select().from(account).where(and(...conditions))
+					.orderBy(desc(account.sort), asc(account.accountId))
+					.limit(size)
+					.offset(offset)
+					.all(),
+				orm(c).select({ total: count() }).from(account).where(and(...conditions)).get()
+			]);
+
+			return { list, total: totalRow.total };
 		}
 
 		if (!accountId) {

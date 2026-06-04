@@ -12,6 +12,9 @@
                  :show-account-icon="false"
                  :time-sort="params.timeSort"
                  :item-height="65"
+                 :pagination="true"
+                 :default-page-size="15"
+                 :page-sizes="[10, 15, 20, 25, 30, 50]"
                  @jump="jumpContent"
                  @refresh-before="refreshBefore"
                  @right-search="rightSearch"
@@ -288,8 +291,8 @@ function jumpContent(email) {
 }
 
 
-function getEmailList(emailId, size) {
-  return allEmailList({emailId, size, ...params})
+function getEmailList(pageParams) {
+  return allEmailList({...pageParams, ...params})
 }
 
 async function latest() {
