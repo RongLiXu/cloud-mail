@@ -4,9 +4,20 @@
       <Icon v-perm="'account:add'" class="icon add" icon="ion:add-outline" width="23" height="23" @click="add"/>
       <Icon class="icon refresh" icon="ion:reload" width="18" height="18" @click="refresh"/>
     </div>
+    <div class="search-wrap">
+      <el-input
+          v-model.trim="searchKeyword"
+          clearable
+          :placeholder="$t('searchByEmail')"
+      >
+        <template #prefix>
+          <Icon icon="iconoir:search" width="16" height="16"/>
+        </template>
+      </el-input>
+    </div>
     <el-scrollbar class="scrollbar" ref="scrollbarRef">
       <div v-infinite-scroll="getAccountList" :infinite-scroll-distance="600" :infinite-scroll-immediate="false">
-        <el-card class="item" :class="itemBg(item.accountId)" v-for="(item, index) in accounts" :key="item.accountId"
+        <el-card class="item" :class="itemBg(item.accountId)" v-for="item in accounts" :key="item.accountId"
                  @click="changeAccount(item)">
           <div class="account">
             {{ item.email }}
@@ -25,7 +36,7 @@
                 <template #dropdown>
                   <el-dropdown-menu>
                     <el-dropdown-item v-if="hasPerm('email:send')" @click="openSetName(item)">{{ $t('rename') }}</el-dropdown-item>
-                    <el-dropdown-item v-if="item.accountId !== userStore.user.account.accountId" @click="setAsTop(item, index)">{{ $t('pin') }}</el-dropdown-item>
+                    <el-dropdown-item v-if="item.accountId !== userStore.user.account.accountId" @click="setAsTop(item)">{{ $t('pin') }}</el-dropdown-item>
                     <el-dropdown-item v-if="item.accountId !== userStore.user.account.accountId && hasPerm('account:delete')"
                                       @click="remove(item)">{{ $t('delete') }}
                     </el-dropdown-item>
@@ -52,7 +63,7 @@
         </template>
 
         <!-- Follow Loading Skeleton -->
-        <template v-if="accounts.length > 0 && !noLoading">
+        <template v-if="accounts.length > 0 && !noLoading && !searchKeyword">
           <el-skeleton animated>
             <template #template>
               <el-card class="item">
@@ -66,7 +77,7 @@
           </el-skeleton>
         </template>
 
-        <div class="noLoading" v-if="noLoading && accounts.length > 0">
+        <div class="noLoading" v-if="noLoading && accounts.length > 0 && !searchKeyword">
           <div>{{ $t('noMoreData') }}</div>
         </div>
         <div class="empty" v-if="noLoading && accounts.length === 0">
@@ -127,7 +138,7 @@
 </template>
 <script setup>
 import {Icon} from "@iconify/vue";
-import {computed, nextTick, reactive, ref, watch} from "vue";
+import {computed, nextTick, onBeforeUnmount, reactive, ref, watch} from "vue";
 import {
   accountList,
   accountAdd,
@@ -155,6 +166,8 @@ const showAdd = ref(false)
 const addLoading = ref(false);
 const domainList = computed(() => settingStore.domainList)
 const accounts = reactive([])
+const searchKeyword = ref('')
+let searchTimer = null
 const noLoading = ref(false)
 const loading = ref(false)
 const followLoading = ref(false);
@@ -185,8 +198,27 @@ if (hasPerm('account:query')) {
   getAccountList()
 }
 
-watch(() => accountStore.changeUserAccountName, () => {
-  accounts[0].name = accountStore.changeUserAccountName
+watch(() => accountStore.changeUserAccountName, (name) => {
+  const currentAccount = accounts.find(item => item.accountId === accountStore.currentAccountId)
+  if (currentAccount) {
+    currentAccount.name = name
+  }
+})
+
+watch(searchKeyword, () => {
+  if (searchTimer) {
+    clearTimeout(searchTimer)
+  }
+
+  searchTimer = setTimeout(() => {
+    refresh()
+  }, 250)
+})
+
+onBeforeUnmount(() => {
+  if (searchTimer) {
+    clearTimeout(searchTimer)
+  }
 })
 
 watch(() => settingStore.domainList, (list) => {
@@ -351,7 +383,7 @@ function add() {
   }, 100)
 }
 
-function setAsTop(account, index) {
+function setAsTop(account) {
   accountSetAsTop(account.accountId).then(() => {
     ElMessage({
       message: t('setSuccess'),
@@ -359,6 +391,7 @@ function setAsTop(account, index) {
       plain: true,
     })
 
+    const index = accounts.findIndex(item => item.accountId === account.accountId);
     const [item] = accounts.splice(index, 1);
     accounts.splice(1, 0, item);
 
@@ -398,7 +431,7 @@ function getAccountList() {
   const accountId = accounts.length > 0 ? accounts.at(-1).accountId : 0;
   const lastSort = accounts.length > 0 ? accounts.at(-1).sort : null;
 
-  accountList(accountId, queryParams.size, lastSort).then(async list => {
+  accountList(accountId, queryParams.size, lastSort, searchKeyword.value).then(async list => {
 
     let end = Date.now();
     let duration = end - start;
@@ -550,10 +583,10 @@ path[fill="#ffdda1"] {
 
   .scrollbar {
     width: 100%;
-    height: calc(100% - 38px);
+    height: calc(100% - 94px);
     overflow: auto;
     @media (max-width: 767px) {
-      height: calc(100% - 98px);
+      height: calc(100% - 154px);
     }
 
     .empty {
@@ -570,6 +603,11 @@ path[fill="#ffdda1"] {
       padding: 10px 0;
       color: var(--secondary-text-color);
     }
+  }
+
+  .search-wrap {
+    padding: 10px;
+    box-shadow: var(--header-actions-border);
   }
 
   .btn {

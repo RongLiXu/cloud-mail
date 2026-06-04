@@ -105,11 +105,12 @@ const accountService = {
 
 	list(c, params, userId) {
 
-		let { accountId, size, lastSort } = params;
+		let { accountId, size, lastSort, keyword } = params;
 
 		accountId = Number(accountId);
 		size = Number(size);
 		lastSort = Number(lastSort);
+		keyword = keyword?.trim();
 
 		if (size > 30) {
 			size = 30;
@@ -119,22 +120,32 @@ const accountService = {
 			accountId = 0;
 		}
 
-		if(Number.isNaN(lastSort)) {
+		if (Number.isNaN(lastSort)) {
 			lastSort = 9999999999;
 		}
 
-		return orm(c).select().from(account).where(
-			and(
-				eq(account.userId, userId),
-				eq(account.isDel, isDel.NORMAL),
-					or(
-						lt(account.sort, lastSort),
-						and(
-							eq(account.sort, lastSort),
-							gt(account.accountId, accountId)
-						)
-					))
+		const conditions = [
+			eq(account.userId, userId),
+			eq(account.isDel, isDel.NORMAL),
+			or(
+				lt(account.sort, lastSort),
+				and(
+					eq(account.sort, lastSort),
+					gt(account.accountId, accountId)
 				)
+			)
+		];
+
+		if (keyword) {
+			conditions.push(
+				or(
+					sql`${account.email} COLLATE NOCASE LIKE ${`%${keyword}%`}`,
+					sql`${account.name} COLLATE NOCASE LIKE ${`%${keyword}%`}`
+				)
+			);
+		}
+
+		return orm(c).select().from(account).where(and(...conditions))
 			.orderBy(desc(account.sort), asc(account.accountId))
 			.limit(size)
 			.all();
