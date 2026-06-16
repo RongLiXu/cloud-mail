@@ -33,7 +33,14 @@ export function backupConfigSet(config) {
 }
 
 export function backupExport() {
-    return http.get('/backup/export', { responseType: 'blob' })
+    const baseUrl = import.meta.env.VITE_BASE_URL || ''
+    const token = localStorage.getItem('token')
+    return fetch(`${baseUrl}/backup/export`, {
+        headers: { 'Authorization': token }
+    }).then(res => {
+        if (!res.ok) throw new Error('Export failed')
+        return res.blob()
+    })
 }
 
 export function backupPush() {

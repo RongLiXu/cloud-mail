@@ -1413,8 +1413,7 @@ function testBackupConnection() {
 
 function exportBackupSql() {
   backupLoading.value = 'export'
-  backupExport().then(res => {
-    const blob = new Blob([res.data], { type: 'application/sql; charset=utf-8' })
+  backupExport().then(blob => {
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
