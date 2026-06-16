@@ -29,7 +29,6 @@ const dbInit = {
 		await this.v2_8DB(c);
 		await this.v2_9DB(c);
 		await this.v3_0DB(c);
-		await this.v3_1DB(c);
 		await this.v3_2DB(c);
 		await this.v3_3DB(c);
 		await settingService.refresh(c);
@@ -58,14 +57,6 @@ const dbInit = {
 	async v3_2DB(c) {
 		try {
 			await c.env.db.prepare(`ALTER TABLE account ADD COLUMN tags TEXT NOT NULL DEFAULT '';`).run();
-		} catch (e) {
-			console.warn(`跳过字段：${e.message}`);
-		}
-	},
-
-	async v3_1DB(c) {
-		try {
-			await c.env.db.prepare(`ALTER TABLE setting ADD COLUMN login_darken_factor INTEGER NOT NULL DEFAULT 0;`).run();
 		} catch (e) {
 			console.warn(`跳过字段：${e.message}`);
 		}
