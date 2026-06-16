@@ -6,6 +6,7 @@ import emailService from './service/email-service';
 import kvObjService from './service/kv-obj-service';
 import oauthService from "./service/oauth-service";
 import analysisService from './service/analysis-service';
+import backupService from './service/backup-service';
 export default {
 	 async fetch(req, env, ctx) {
 
@@ -27,6 +28,7 @@ export default {
 	async scheduled(c, env, ctx) {
 		if (c.cron === '*/30 * * * *') {
 			await analysisService.refreshEchartsCache({ env })
+			await backupService.runBackupScheduled(env)
 			return;
 		}
 
@@ -35,5 +37,6 @@ export default {
 		await emailService.completeReceiveAll({ env })
 		await oauthService.clearNoBindOathUser({ env })
 		await analysisService.refreshEchartsCache({ env })
+		await backupService.runBackupScheduled(env)
 	},
 };

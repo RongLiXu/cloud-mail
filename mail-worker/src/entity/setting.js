@@ -52,6 +52,16 @@ export const setting = sqliteTable('setting', {
 	blackContent: text('black_content').default('').notNull(),
 	blackFrom: text('black_from').default('').notNull(),
 	aiCode: integer('ai_code').default(1).notNull(),
-	aiCodeFilter: text('ai_code_filter').default('').notNull()
+	aiCodeFilter: text('ai_code_filter').default('').notNull(),
+	backupDbType: text('backup_db_type').default('').notNull(),
+	backupDbHost: text('backup_db_host').default('').notNull(),
+	backupDbPort: integer('backup_db_port').default(0).notNull(),
+	backupDbUser: text('backup_db_user').default('').notNull(),
+	backupDbPassword: text('backup_db_password').default('').notNull(),
+	backupDbName: text('backup_db_name').default('').notNull(),
+	backupSchedule: integer('backup_schedule').default(0).notNull(),
+	backupCron: text('backup_cron').default('0 4 * * *').notNull(),
+	backupDirection: integer('backup_direction').default(0).notNull(),
+	backupD1Binding: text('backup_d1_binding').default('').notNull()
 });
 export default setting

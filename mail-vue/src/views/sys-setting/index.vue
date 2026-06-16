@@ -392,6 +392,110 @@
             </div>
           </div>
 
+          <!-- Data Backup Card -->
+          <div class="settings-card">
+            <div class="card-title">{{ $t('dataBackup') }}</div>
+            <div class="card-content">
+              <div class="setting-item">
+                <div><span>{{ $t('dbType') }}</span></div>
+                <div>
+                  <el-select v-model="backupConfig.backupDbType" :style="`width: ${ locale === 'en' ? 140 : 120 }px;`" placeholder="Select">
+                    <el-option label="MySQL" value="mysql"/>
+                    <el-option label="PostgreSQL" value="pgsql"/>
+                    <el-option label="MSSQL" value="mssql"/>
+                    <el-option label="D1" value="d1"/>
+                  </el-select>
+                </div>
+              </div>
+              <div class="setting-item">
+                <div><span>{{ $t('dbHost') }}</span></div>
+                <div>
+                  <el-input v-model="backupConfig.backupDbHost" size="small" :style="`width: ${ locale === 'en' ? 200 : 160 }px;`" :placeholder="$t('dbHost')"/>
+                </div>
+              </div>
+              <div class="setting-item">
+                <div><span>{{ $t('dbPort') }}</span></div>
+                <div>
+                  <el-input-number v-model="backupConfig.backupDbPort" size="small" :min="0" :max="65535" :style="`width: ${ locale === 'en' ? 140 : 120 }px;`"/>
+                </div>
+              </div>
+              <div class="setting-item">
+                <div><span>{{ $t('dbUser') }}</span></div>
+                <div>
+                  <el-input v-model="backupConfig.backupDbUser" size="small" :style="`width: ${ locale === 'en' ? 200 : 160 }px;`" :placeholder="$t('dbUser')"/>
+                </div>
+              </div>
+              <div class="setting-item">
+                <div><span>{{ $t('dbPassword') }}</span></div>
+                <div>
+                  <el-input v-model="backupConfig.backupDbPassword" size="small" type="password" show-password :style="`width: ${ locale === 'en' ? 200 : 160 }px;`" :placeholder="$t('dbPassword')"/>
+                </div>
+              </div>
+              <div class="setting-item">
+                <div><span>{{ $t('dbName') }}</span></div>
+                <div>
+                  <el-input v-model="backupConfig.backupDbName" size="small" :style="`width: ${ locale === 'en' ? 200 : 160 }px;`" :placeholder="$t('dbNameOptional')"/>
+                </div>
+              </div>
+              <div class="setting-item" v-if="backupConfig.backupDbType === 'd1'">
+                <div>
+                  <span>{{ $t('d1Binding') }}</span>
+                  <el-tooltip effect="dark" :content="$t('d1BindingDesc')">
+                    <Icon class="warning" icon="fe:warning" width="18" height="18"/>
+                  </el-tooltip>
+                </div>
+                <div>
+                  <el-input v-model="backupConfig.backupD1Binding" size="small" :style="`width: ${ locale === 'en' ? 200 : 160 }px;`" placeholder="e.g. DB"/>
+                </div>
+              </div>
+              <div class="setting-item">
+                <div><span>{{ $t('backupSchedule') }}</span></div>
+                <div>
+                  <el-select v-model="backupConfig.backupSchedule" :style="`width: ${ locale === 'en' ? 160 : 130 }px;`">
+                    <el-option :value="0" :label="$t('manualOnly')"/>
+                    <el-option :value="1" :label="$t('scheduledOnly')"/>
+                    <el-option :value="2" :label="$t('both')"/>
+                  </el-select>
+                </div>
+              </div>
+              <div class="setting-item" v-if="backupConfig.backupSchedule === 1 || backupConfig.backupSchedule === 2">
+                <div><span>{{ $t('cronExpression') }}</span></div>
+                <div>
+                  <el-input v-model="backupConfig.backupCron" size="small" :style="`width: ${ locale === 'en' ? 200 : 160 }px;`" placeholder="0 4 * * *"/>
+                </div>
+              </div>
+              <div class="setting-item">
+                <div><span>{{ $t('backupDirection') }}</span></div>
+                <div>
+                  <el-select v-model="backupConfig.backupDirection" :style="`width: ${ locale === 'en' ? 140 : 120 }px;`">
+                    <el-option :value="0" :label="$t('push')"/>
+                    <el-option :value="1" :label="$t('pull')"/>
+                  </el-select>
+                </div>
+              </div>
+              <div class="backup-actions">
+                <el-button size="small" type="primary" :loading="backupLoading === 'config'" @click="saveBackupConfig">
+                  {{ $t('backupSaveConfig') }}
+                </el-button>
+                <el-button size="small" type="success" :loading="backupLoading === 'test'" @click="testBackupConnection">
+                  {{ $t('testConnection') }}
+                </el-button>
+                <el-button size="small" :loading="backupLoading === 'export'" @click="exportBackupSql">
+                  {{ $t('exportSql') }}
+                </el-button>
+                <el-button size="small" type="warning" :loading="backupLoading === 'push'" @click="pushBackupToExternal">
+                  {{ $t('pushToExternal') }}
+                </el-button>
+                <el-button size="small" type="danger" :loading="backupLoading === 'pull'" @click="pullBackupFromExternal">
+                  {{ $t('pullFromExternal') }}
+                </el-button>
+              </div>
+              <div class="backup-result" v-if="backupResult">
+                <el-tag :type="backupResult.success ? 'success' : 'danger'">{{ backupResult.message }}</el-tag>
+              </div>
+            </div>
+          </div>
+
           <div class="settings-card about">
             <div class="card-title">{{ $t('about') }}</div>
             <div class="card-content">
@@ -812,7 +916,7 @@
 
 <script setup>
 import {computed, defineOptions, nextTick, reactive, ref} from "vue";
-import {deleteBackground, setBackground, setBlackList, settingQuery, settingSet} from "@/request/setting.js";
+import {backupConfigGet, backupConfigSet, backupExport, backupPull, backupPush, backupTestConnection, deleteBackground, setBackground, setBlackList, settingQuery, settingSet} from "@/request/setting.js";
 import {useSettingStore} from "@/store/setting.js";
 import {useUiStore} from "@/store/ui.js";
 import {useUserStore} from "@/store/user.js";
@@ -867,6 +971,20 @@ const minEmailPrefix = ref(0)
 const emailPrefixFilter = ref([])
 const backgroundUrl = ref('')
 let backgroundFile = {}
+const backupConfig = reactive({
+  backupDbType: '',
+  backupDbHost: '',
+  backupDbPort: 3306,
+  backupDbUser: '',
+  backupDbPassword: '',
+  backupDbName: '',
+  backupSchedule: 0,
+  backupCron: '0 4 * * *',
+  backupDirection: 0,
+  backupD1Binding: ''
+})
+const backupLoading = ref('')
+const backupResult = ref(null)
 const showSetBackground = ref(false)
 let regVerifyCount = ref(1)
 let addVerifyCount = ref(1)
@@ -967,6 +1085,7 @@ function getSettings() {
     resetEmailPrefix()
     resetBlackList()
     resetAiCodeFilter()
+    resetBackupForm()
     nextTick(() => {
       settingReady.value = true
     })
@@ -1268,6 +1387,20 @@ function resetAiCodeFilter() {
   aiCodeFilter.value = setting.value.aiCodeFilter ? setting.value.aiCodeFilter.split(',') : []
 }
 
+function resetBackupForm() {
+  backupConfig.backupDbType = setting.value.backupDbType || ''
+  backupConfig.backupDbHost = setting.value.backupDbHost || ''
+  backupConfig.backupDbPort = setting.value.backupDbPort || 3306
+  backupConfig.backupDbUser = setting.value.backupDbUser || ''
+  backupConfig.backupDbPassword = ''
+  backupConfig.backupDbName = setting.value.backupDbName || ''
+  backupConfig.backupSchedule = setting.value.backupSchedule ?? 0
+  backupConfig.backupCron = setting.value.backupCron || '0 4 * * *'
+  backupConfig.backupDirection = setting.value.backupDirection ?? 0
+  backupConfig.backupD1Binding = setting.value.backupD1Binding || ''
+  backupResult.value = null
+}
+
 function saveEmailPrefix() {
   const form = {}
   form.minEmailPrefix = minEmailPrefix.value
@@ -1277,6 +1410,83 @@ function saveEmailPrefix() {
 
 function saveAiCodeFilter() {
   editSetting({aiCodeFilter: aiCodeFilter.value + ''})
+}
+
+function saveBackupConfig() {
+  const params = { ...backupConfig }
+  if (!params.backupDbPassword) delete params.backupDbPassword
+  backupLoading.value = 'config'
+  backupConfigSet(params).then(({ data }) => {
+    if (data.code === 0) {
+      ElMessage({ message: t('saveSuccessMsg'), type: 'success', plain: true })
+    }
+  }).finally(() => { backupLoading.value = '' })
+}
+
+function testBackupConnection() {
+  backupLoading.value = 'test'
+  backupTestConnection().then(({ data }) => {
+    if (data.code === 0) {
+      backupResult.value = data.data
+      ElMessage({ message: data.data.message, type: data.data.success ? 'success' : 'error', plain: true })
+    }
+  }).finally(() => { backupLoading.value = '' })
+}
+
+function exportBackupSql() {
+  backupLoading.value = 'export'
+  backupExport().then(res => {
+    const blob = new Blob([res.data], { type: 'application/sql; charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `cloud-mail-backup-${new Date().toISOString().slice(0, 10)}.sql`
+    a.click()
+    URL.revokeObjectURL(url)
+    ElMessage({ message: t('saveSuccessMsg'), type: 'success', plain: true })
+  }).catch(e => {
+    ElMessage({ message: t('backupFailed') + ': ' + (e.message || ''), type: 'error', plain: true })
+  }).finally(() => { backupLoading.value = '' })
+}
+
+function pushBackupToExternal() {
+  if (!backupConfig.backupDbType) {
+    ElMessage({ message: t('dbType') + ': ' + 'Please select a database type', type: 'warning', plain: true })
+    return
+  }
+  backupLoading.value = 'push'
+  backupPush().then(({ data }) => {
+    if (data.code === 0) {
+      backupResult.value = { success: true, message: t('backupSuccess') }
+      ElMessage({ message: t('backupSuccess'), type: 'success', plain: true })
+    }
+  }).catch(e => {
+    backupResult.value = { success: false, message: e.response?.data?.message || e.message }
+    ElMessage({ message: t('backupFailed') + ': ' + (e.response?.data?.message || e.message), type: 'error', plain: true })
+  }).finally(() => { backupLoading.value = '' })
+}
+
+function pullBackupFromExternal() {
+  if (!backupConfig.backupDbType) {
+    ElMessage({ message: t('dbType') + ': ' + 'Please select a database type', type: 'warning', plain: true })
+    return
+  }
+  ElMessageBox.confirm(t('restoreConfirm'), {
+    confirmButtonText: t('confirm'),
+    cancelButtonText: t('cancel'),
+    type: 'warning'
+  }).then(() => {
+    backupLoading.value = 'pull'
+    backupPull().then(({ data }) => {
+      if (data.code === 0) {
+        backupResult.value = { success: true, message: t('backupSuccess') }
+        ElMessage({ message: t('backupSuccess'), type: 'success', plain: true })
+      }
+    }).catch(e => {
+      backupResult.value = { success: false, message: e.response?.data?.message || e.message }
+      ElMessage({ message: t('backupFailed') + ': ' + (e.response?.data?.message || e.message), type: 'error', plain: true })
+    }).finally(() => { backupLoading.value = '' })
+  }).catch(() => {})
 }
 
 const opacityChange = debounce(doOpacityChange, 1000, {
@@ -2018,6 +2228,19 @@ form .el-button {
 
 :deep(.el-select__wrapper) {
   min-height: 28px;
+}
+
+.backup-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--el-border-color);
+}
+
+.backup-result {
+  margin-top: 8px;
 }
 
 </style>
